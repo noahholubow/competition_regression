@@ -22,7 +22,7 @@ rf_model <- rand_forest(mode = "regression",
 
 # setup tuning grid
 rf_params <- parameters(rf_model) %>% 
-  update(mtry = mtry(range = c(2, 15))) # use 10 as upper bound instead of 14 vars
+  update(mtry = mtry(range = c(2, 25))) # use 10 as upper bound instead of 14 vars
 
 # define grid
 rf_grid <- grid_regular(rf_params, levels = 5) # trying out every single combination of mtry and min_n

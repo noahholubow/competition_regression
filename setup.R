@@ -2,7 +2,7 @@
 library(tidymodels)
 library(tidyverse)
 library(patchwork)
-library(dplyr)
+library(skimr)
 
 # setting seed
 set.seed(3012)
@@ -26,12 +26,28 @@ p1
 
 # showing missingness
 naniar::miss_var_summary(train)
-skimr::skim_without_charts(train)
+skimmed <- skim_without_charts(train)
+print(skimmed, strip_metadata = FALSE)
+
+# correlation plot
+corrplot::corrplot(cor(
+  train %>% select(money_made_inv, annual_inc, avg_cur_bal, 
+                   bc_util, dti, int_rate, loan_amnt, 
+                   mort_acc, pub_rec, tot_coll_amt, tot_cur_bal, 
+                   total_rec_late_fee)), method = "circle")
+
+#summary
+summary(train)
+
+# graphs
+train %>% 
+  ggplot(aes(x = tot_coll_amt)) +
+  geom_histogram()
 
 
 # Exercise 3 --------------------------------------------------------------
 # folding data
-fold <- vfold_cv(train, v= 5, repeats = 3, strata = money_made_inv)
+fold <- vfold_cv(train, v = 5, repeats = 3, strata = money_made_inv)
 fold
 
 
@@ -50,15 +66,21 @@ recipe <- recipe(
   money_made_inv ~ .,
   data = train
 ) %>% 
-  step_rm(id, earliest_cr_line, last_credit_pull_d, addr_state) %>% 
-  step_other(emp_title, sub_grade, emp_length) %>% 
-  step_dummy(all_nominal()) %>%  # one hot encoding 
-  step_normalize(all_predictors())
+  step_rm(id, earliest_cr_line, last_credit_pull_d) %>% 
+  step_novel(purpose) %>% 
+  step_other(all_nominal(), -all_outcomes(), threshold = 0.09) %>% 
+  step_YeoJohnson(annual_inc, avg_cur_bal, bc_util, mort_acc) %>% 
+  step_log(annual_inc, avg_cur_bal, bc_util, mort_acc, base = 10) %>% 
+  step_dummy(all_nominal(), -all_outcomes()) %>%  # one hot encoding 
+  step_normalize(all_predictors(), -all_outcomes()) %>% 
+  # step_interact(terms = ~tot_cur_bal:avg_cur_balance + mort_acc:avg_cur_bal) %>% 
+  step_nzv(all_predictors(), -all_outcomes()) %>% 
+  step_zv(all_predictors(), -all_outcomes())
 
 # prepping and baking data
-recipe %>% 
-  prep(train) %>% 
-  bake(new_data = NULL) %>% 
+recipe %>%
+  prep(train) %>%
+  bake(new_data = NULL) %>%
   View()
 
 
@@ -66,3 +88,64 @@ recipe %>%
 
 # objects required for tuning
 save(fold, recipe, split, file = "data/setup.rda")
+
+
+
+
+
+
+
+
+
+
+
+
+
+# loading files
+load(file = "data/rf_tune.rda")
+
+# autplots
+rf_tune %>% 
+  autoplot(metric = "rmse")
+
+
+# Exercise 11 -------------------------------------------------------------
+# selecting best metric
+
+# store info inside tibble
+tune_results <- tibble(
+  model_type = "rf",
+  tune_info = list(rf_tune),
+  assessment_info = map(tune_info, collect_metrics),
+  best_model = map(tune_info, ~ select_best(.x, metric = "rmse"))
+)
+
+tune_results %>% 
+  select(model_type, best_model) %>% 
+  unnest(best_model)
+
+tune_results %>% 
+  select(model_type, assessment_info) %>% 
+  unnest(assessment_info) %>% 
+  filter(.metric == "rmse") %>% 
+  arrange(mean) %>% 
+  View()
+
+
+# Exericse 12 -------------------------------------------------------------
+# rf tuned workflow
+rf_workflow_tuned <- rf_workflow %>% 
+  finalize_workflow(select_best(rf_tune, metric = "rmse"))
+
+# viewing results
+rf_results <- fit(rf_workflow_tuned, train)
+rf_results
+
+# Exercise 13 -------------------------------------------------------------
+# predict
+predictions <- predict(rf_results, new_data = test) %>% 
+  bind_cols(Id = test$id) %>% 
+  rename(Predicted = .pred) %>% 
+  select(Id, Predicted)
+
+write_csv(predictions, file = "data/predictions.csv")
