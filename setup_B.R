@@ -67,10 +67,10 @@ recipe <- recipe( # setting up recipe
   step_rm(id, earliest_cr_line, last_credit_pull_d) %>% # removing unusable/undesirable variables
   step_novel(purpose) %>% # used to handle new levels of purpose in testing data
   step_other(all_nominal(), -all_outcomes(), threshold = 0.1) %>% # binning sparse data for all nominal variables
-  step_YeoJohnson(annual_inc, avg_cur_bal, bc_util, mort_acc) %>% # trying to make data more normal
   step_log(annual_inc, avg_cur_bal, bc_util, mort_acc, base = 10) %>% # also trying to make data more normal
   step_dummy(all_nominal(), -all_outcomes()) %>%  # creating dummy variables for all nominal data
   step_normalize(all_predictors(), -all_outcomes()) %>% # normalizing all predictors
+  step_nzv(all_predictors(), -all_outcomes()) %>% # removing variables that are nearly unbalanced (near zero variance)
   step_zv(all_predictors(), -all_outcomes()) # removing variables that have no variance
 
 # prepping and baking data
